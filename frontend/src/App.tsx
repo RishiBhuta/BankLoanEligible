@@ -70,7 +70,7 @@ export default function App() {
     e.preventDefault();
     setLoad(true); setError(null); setResult(null);
     try {
-     const { data } = await axios.post<Result>("https://bankloaneligible.onrender.com/predict", {
+      const { data } = await axios.post<Result>("http://localhost:5000/predict", {
         ...form,
         ApplicantIncome:   Number(form.ApplicantIncome)   || 0,
         CoapplicantIncome: Number(form.CoapplicantIncome) || 0,
