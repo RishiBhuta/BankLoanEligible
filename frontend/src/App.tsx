@@ -47,13 +47,6 @@ function Label({ children }: { children: React.ReactNode }) {
   );
 }
 
-function Pill({ children }: { children: React.ReactNode }) {
-  return (
-    <span className="font-mono text-2xs tracking-widest text-stone-400 border border-stone-200 px-2.5 py-1 uppercase">
-      {children}
-    </span>
-  );
-}
 
 // Credit score colour
 function scoreColor(score: number) {
