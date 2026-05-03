@@ -13,7 +13,7 @@ interface Result {
   prediction: "Approved" | "Rejected";
   approve_probability: number;
   reject_probability: number;
-  credit_score: number;
+  eligibility_score: number;
   score_band: string;
   shap_contributions: ShapItem[];
 }
@@ -47,8 +47,6 @@ function Label({ children }: { children: React.ReactNode }) {
   );
 }
 
-
-// Credit score colour
 function scoreColor(score: number) {
   if (score >= 750) return { text: "text-emerald-500", bg: "bg-emerald-400" };
   if (score >= 700) return { text: "text-lime-500",    bg: "bg-lime-400"    };
@@ -70,7 +68,7 @@ export default function App() {
     e.preventDefault();
     setLoad(true); setError(null); setResult(null);
     try {
-      await axios.post<Result>("https://bankloaneligible-1.onrender.com/predict", {
+      const response = await axios.post<Result>("https://bankloaneligible-1.onrender.com/predict", {
         ...form,
         ApplicantIncome:   Number(form.ApplicantIncome)   || 0,
         CoapplicantIncome: Number(form.CoapplicantIncome) || 0,
@@ -78,7 +76,7 @@ export default function App() {
         Loan_Amount_Term:  Number(form.Loan_Amount_Term)  || 360,
         Credit_History:    Number(form.Credit_History)    || 0,
       });
-      setResult(data);
+      setResult(response.data);
     } catch (err: unknown) {
       setError(axios.isAxiosError(err)
         ? (err.response?.data?.error ?? err.message)
@@ -90,8 +88,8 @@ export default function App() {
   const maxShap = result
     ? Math.max(...result.shap_contributions.map(s => Math.abs(s.value)), 0.001)
     : 1;
-  const sc      = result ? scoreColor(result.credit_score) : null;
-  const scorePct = result ? ((result.credit_score - 300) / 600) * 100 : 0;
+  const sc       = result ? scoreColor(result.eligibility_score) : null;
+  const scorePct = result ? ((result.eligibility_score - 300) / 600) * 100 : 0;
 
   return (
     <div className="min-h-screen bg-stone-50 flex flex-col">
@@ -121,21 +119,19 @@ export default function App() {
       <section className="border-b border-stone-200 bg-white">
         <div className="max-w-[1240px] mx-auto px-6 py-14 grid grid-cols-1 md:grid-cols-2 gap-10 items-end">
           <div>
-            <p className="font-mono text-2xs tracking-[0.2em] uppercase text-stone-400 mb-4">
-              
-            </p>
             <h1 className="font-serif italic text-[clamp(3rem,7vw,5.5rem)] leading-[0.9] text-stone-900 mb-5">
               Loan<br />Eligibility<br />Engine.
             </h1>
             <p className="font-sans text-sm text-stone-500 max-w-[360px] leading-relaxed">
-              Enter your details and receive an instant AI-driven credit score,
-              decision, and a full breakdown of every factor good or bad.
+              Enter your details and receive an instant AI-driven eligibility score,
+              decision, and a full breakdown of every factor — good or bad.
             </p>
           </div>
           <div className="flex flex-col gap-4 md:items-end">
             {[
-              { n: "86.0%", label: "Model Accuracy"   },
-              { n: "0.89",  label: "ROC-AUC Score"    },
+              { n: "80.5%", label: "Real-World Accuracy" },
+              { n: "0.79",  label: "ROC-AUC Score"       },
+              { n: "614",   label: "Real Loan Applications" },
             ].map(s => (
               <div key={s.label} className="flex items-baseline gap-3">
                 <span className="font-serif italic text-[2.2rem] leading-none text-stone-900">{s.n}</span>
@@ -273,7 +269,7 @@ export default function App() {
               <div className="bg-white border border-stone-200 border-dashed flex flex-col items-center justify-center gap-4 py-20 text-center px-8">
                 <div className="w-10 h-10 bg-stone-100 flex items-center justify-center text-xl">📋</div>
                 <p className="font-sans text-sm text-stone-400 leading-relaxed max-w-[200px]">
-                  Complete the form to receive your credit score and decision.
+                  Complete the form to receive your eligibility score and decision.
                 </p>
               </div>
             )}
@@ -290,18 +286,18 @@ export default function App() {
 
             {result && sc && (
               <>
-                {/* ── Credit Score Card ── */}
+                {/* ── Eligibility Score Card ── */}
                 <div className="bg-white border border-stone-200 fade-up fade-up-1">
                   <div className="px-5 py-3.5 border-b border-stone-100">
                     <span className="font-mono text-2xs tracking-[0.16em] uppercase text-stone-500">
-                      Credit Score
+                      Eligibility Score
                     </span>
                   </div>
                   <div className="px-5 py-5">
                     <div className="flex items-end justify-between mb-3">
                       <div>
                         <span className={`font-serif italic text-[3.5rem] leading-none ${sc.text}`}>
-                          {result.credit_score}
+                          {result.eligibility_score}
                         </span>
                         <span className="font-mono text-2xs text-stone-400 ml-2 tracking-widest">/900</span>
                       </div>
@@ -309,13 +305,15 @@ export default function App() {
                         {result.score_band}
                       </span>
                     </div>
-                    {/* Score track */}
                     <div className="w-full h-[3px] bg-stone-100 mb-2">
                       <div className={`h-full shap-bar ${sc.bg}`} style={{ width: `${scorePct}%` }} />
                     </div>
                     <div className="flex justify-between font-mono text-2xs text-stone-300">
                       <span>300</span><span>500</span><span>700</span><span>900</span>
                     </div>
+                    <p className="font-mono text-2xs text-stone-300 mt-3 leading-relaxed">
+                      Based on model confidence — not an official CIBIL score.
+                    </p>
                   </div>
                 </div>
 
@@ -403,7 +401,7 @@ export default function App() {
                 </div>
 
                 <p className="font-mono text-2xs text-stone-300 leading-relaxed fade-up fade-up-3 px-0.5">
-                  SHAP values measure each factor's contribution to your score. Positive values push toward approval, negative values push toward rejection.
+                  SHAP values measure each factor's contribution. Positive values push toward approval, negative values push toward rejection.
                 </p>
               </>
             )}
@@ -415,10 +413,12 @@ export default function App() {
       <footer className="border-t border-stone-200 mt-10">
         <div className="max-w-[1240px] mx-auto px-6 py-5 flex items-center justify-between flex-wrap gap-4">
           <span className="font-mono text-2xs text-stone-300 tracking-wide uppercase">
-            
+            © 2025 LoanIQ · Demonstration Only
           </span>
           <div className="flex gap-2 flex-wrap">
-            
+            <span className="font-mono text-2xs tracking-wide text-stone-400 border border-stone-200 px-2.5 py-1">Gradient Boosting</span>
+            <span className="font-mono text-2xs tracking-wide text-stone-400 border border-stone-200 px-2.5 py-1">SHAP XAI</span>
+            <span className="font-mono text-2xs tracking-wide text-stone-400 border border-stone-200 px-2.5 py-1">80.5% Accuracy</span>
           </div>
         </div>
       </footer>
