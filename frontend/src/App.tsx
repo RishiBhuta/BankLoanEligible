@@ -68,7 +68,7 @@ export default function App() {
     e.preventDefault();
     setLoad(true); setError(null); setResult(null);
     try {
-      const response = await axios.post<Result>("https://bankloaneligible-1.onrender.com/predict", {
+      const response = await axios.post<Result>("https://bankloaneligible-production.up.railway.app/predict", {
         ...form,
         ApplicantIncome:   Number(form.ApplicantIncome)   || 0,
         CoapplicantIncome: Number(form.CoapplicantIncome) || 0,
