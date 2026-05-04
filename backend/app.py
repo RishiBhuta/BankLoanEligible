@@ -27,7 +27,6 @@ NUMERIC_FEATURES     = ["ApplicantIncome", "CoapplicantIncome", "LoanAmount",
 CATEGORICAL_FEATURES = ["Gender", "Married", "Dependents", "Education",
                          "Self_Employed", "Property_Area"]
 
-# Valid categories — used for safe fallbacks
 VALID_CATEGORIES = {
     "Gender":        ["Male", "Female"],
     "Married":       ["Yes", "No"],
@@ -37,7 +36,6 @@ VALID_CATEGORIES = {
     "Property_Area": ["Urban", "Semiurban", "Rural"],
 }
 
-# Numeric defaults (median-ish values) used when input is missing/invalid
 NUMERIC_DEFAULTS = {
     "ApplicantIncome":   5000.0,
     "CoapplicantIncome": 1500.0,
@@ -79,7 +77,6 @@ def aggregate_shap(shap_values_1d):
 
 # ── SHAP label helper ─────────────────────────────────────────────────────────
 def shap_label(feature, value, shap_val):
-    """Return a human-readable label explaining what the value means."""
     labels = {
         "Credit_History":     lambda v: "Good credit history" if v >= 1 else "Poor credit history",
         "ApplicantIncome":    lambda v: f"Income ₹{int(v):,}/mo",
@@ -101,10 +98,8 @@ def shap_label(feature, value, shap_val):
 def predict():
     try:
         data = request.get_json(force=True) or {}
+        row  = {}
 
-        row = {}
-
-        # Numeric: coerce to float, fall back to default — never crash
         for feat in NUMERIC_FEATURES:
             raw = data.get(feat)
             try:
@@ -115,7 +110,6 @@ def predict():
                 val = NUMERIC_DEFAULTS[feat]
             row[feat] = val
 
-        # Categorical: use value if valid, else first valid option
         for feat in CATEGORICAL_FEATURES:
             raw   = str(data.get(feat, "")).strip()
             valid = VALID_CATEGORIES[feat]
@@ -124,14 +118,14 @@ def predict():
         df_input = pd.DataFrame([row], columns=feature_cols)
 
         # Predict
-        pred_label = int(pipeline.predict(df_input)[0])
-        probas     = pipeline.predict_proba(df_input)[0]
-        approve_prob = float(probas[1])   # always probability of approval
+        pred_label   = int(pipeline.predict(df_input)[0])
+        probas       = pipeline.predict_proba(df_input)[0]
+        approve_prob = float(probas[1])
         reject_prob  = float(probas[0])
 
         # SHAP
         X_transformed = preprocessor.transform(df_input)
-        shap_vals     = explainer.shap_values(X_transformed)
+        shap_vals = explainer.shap_values(X_transformed, check_additivity=False)
         sv_arr        = np.array(shap_vals)
 
         if sv_arr.ndim == 3:
@@ -142,40 +136,32 @@ def predict():
             sv = np.array(shap_vals[1])[0]
 
         agg = aggregate_shap(sv)
-
-        # Build top-8 contributions with human labels
         top = sorted(agg.items(), key=lambda x: abs(x[1]), reverse=True)[:8]
+
         contributions = []
         for feat, shap_val in top:
             raw_val = row[feat]
             contributions.append({
-                "feature":      feat,
-                "value":        round(shap_val, 4),
-                "impact":       "positive" if shap_val >= 0 else "negative",
+                "feature":       feat,
+                "value":         round(shap_val, 4),
+                "impact":        "positive" if shap_val >= 0 else "negative",
                 "display_label": shap_label(feat, raw_val, shap_val),
-                "raw_value":    raw_val,
+                "raw_value":     raw_val,
             })
 
-        # Credit score: map approval probability to 300–900 range
-        credit_score = int(300 + approve_prob * 600)
-
-        # Score band
-        if credit_score >= 750:
-            band = "Excellent"
-        elif credit_score >= 700:
-            band = "Good"
-        elif credit_score >= 650:
-            band = "Fair"
-        elif credit_score >= 600:
-            band = "Poor"
-        else:
-            band = "Very Poor"
+        # Eligibility score: map approval probability → 300–900
+        eligibility_score = int(300 + approve_prob * 600)
+        if eligibility_score >= 750:   band = "Excellent"
+        elif eligibility_score >= 700: band = "Good"
+        elif eligibility_score >= 650: band = "Fair"
+        elif eligibility_score >= 600: band = "Poor"
+        else:                          band = "Very Poor"
 
         return jsonify({
-            "prediction":         "Approved" if pred_label == 1 else "Rejected",
+            "prediction":          "Approved" if pred_label == 1 else "Rejected",
             "approve_probability": round(approve_prob * 100, 1),
-            "reject_probability":  round(reject_prob * 100, 1),
-            "credit_score":        credit_score,
+            "reject_probability":  round(reject_prob  * 100, 1),
+            "eligibility_score":   eligibility_score,
             "score_band":          band,
             "shap_contributions":  contributions,
         })
